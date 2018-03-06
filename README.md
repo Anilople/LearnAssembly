@@ -7,6 +7,28 @@
 dd if=yourBinPath of=yourVHDPath bs=512 count=1
 ```
 
+#### 调试工具Bochs
+
+```shell
+s count # 单步执行count步,如果没有写count,默认为1步
+b addr # 在物理内存addr处设置端点, add可以是0x1234格式(一个16进制数),也可以是0x0000:0x7cca格式
+c # continue, 执行到断点处,没有端点,就会一直运行
+r # register, 显示通用寄存器的内容
+sreg # segment register, 显示段寄存器的内容
+xp addr # xp(eXamine memory at Physical address), 显示内存addr处的双字
+xp/n addr # 显示内存addr处的n个双字数据
+q # quit 退出调试
+# -----------------------
+# 次要一些的命令
+u start end # 反汇编一段内存,例如 u 0x7c00 0x7c10
+u /n # 反汇编EIP开始,n条汇编语句
+trace-reg on # 打开 每执行一条指令就打印CPU信息
+```
+
+[bochs调试方法与指令详解](http://blog.csdn.net/liu0808/article/details/53099099)
+
+
+
 ### NASM相关信息
 
 #### NASM命令行编译
