@@ -43,8 +43,7 @@ start:
         inc di ;
         loop s
 
-    hlt ; 等待中断,节约CPU资源
-;jmp near $
+    retf
 
     hello:
     db "hello,world!"
