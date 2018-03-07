@@ -6,7 +6,7 @@ SECTION mbr align=16 vstart=0x7c00
 ; 设置堆栈
     mov ax,0
     mov ss,ax
-    mov sp,ax
+    mov sp,0x7c00
 
 ; 加载用户程序
     ; 目标内存ds:0x0000
