@@ -1,5 +1,5 @@
 
-user_disk equ 100 ; 约定好的用户程序所在扇区
+user_disk equ 1 ; 约定好的用户程序所在扇区
 
 SECTION mbr align=16 vstart=0x7c00
     
@@ -8,75 +8,27 @@ SECTION mbr align=16 vstart=0x7c00
     mov ss,ax
     mov sp,ax
 
-; 用户程序要加载的目标内存(不要偏移地址,以段为单位)
-    mov ax,[cs:phy_base_cs]
-    mov es,ax ; 段地址
+; 加载用户程序
+    ; 目标内存ds:0x0000
+    ; 起始扇区di:si
+    mov ax,[cs:phy_base_cs] ; 用户程序要加载的目标内存(不要偏移地址,以段为单位)
     mov ds,ax
-
-; 将用户程序第一个扇区读取出来,起始扇区号为di:si
-; 目标为ds:bx
     xor di,di
     mov si,user_disk ; 用户程序起始扇区di:si
-    xor bx,bx
-    call read_disk_1
+    call read_user_program
 
-; 看后边还用不用继续读用户程序
-    ;计算程序长度,决定还要读入多少扇区(1个扇区512字节)
-    mov ax,[0x00]
-    mov dx,[0x02] ; 程序长度为dx(16~31),ax(0~15)
-    mov bx,512
-    div bx
-    ; 现在dx存余数,ax存商
-    ; 如果dx>0 那么实际总共要读取的扇区数为ax+1
-    ; 如果dx=0 那么实际总共要读取的扇区数为ax
-    ; 所以, if(dx>0) dx=1
-    ; 然后add ax,dx
-    cmp dx,0
-    je add_dx_to_ax
-    mov dx,1 ; 如果dx不为0,那么将它置1
-add_dx_to_ax:
-    add ax,dx ; 然后加到ax上
-    ; 但是由于我们已经读取过一个扇区
-    sub ax,1 ; 剩余扇区数等于实际总扇区数-1
-
-    mov cx,ax ; 设置循环,注意如果cx=0,那就不用继续读取了
-    ; 如果cx=0,还用loop,就会循环0xffff次
-    jcxz not_continue_read_disk
-    
-    xor bx,bx 
-    continue_read_disk:
-        inc si
-        adc di,0 ; 移动到下一个扇区
-        add bx,512 ; 指向下一段内存
-        call read_disk_1
-        loop continue_read_disk
-    
-    not_continue_read_disk:
-
-; 重定位
-; 约定如下,基于加载器设置的目标内存base(也就是上边的ds:bx,但是默认bx=0)
-; dw 程序长度       [es:di+0]
-; dw 入口偏移地址   [es:di+2]
-; dw 入口段地址     [es:di+4]
-; dw 段重定位表长度 +6
-; 段表
-
-    ; 计算入口代码段基址
-    mov dx,[cs:phy_base_cs]
-    mov bx,0x06
-    call calcu_segment
-
-;段重定位表  
-    mov cx,[0x0a] ;长度
-    mov dx,[cs:phy_base_cs]
-    mov bx,0x0c ;段重定位表偏移量
-    realloc:
-        call calcu_segment
-        add bx,4
-        loop realloc
+;重定位
+    ; 入口参数为ds, 用户程序起始物理地址的段地址
+    call relocation_segment_table 
 
 ; 接下来交给用户程序执行
-    jmp far [0x04]
+    call far [0x04]
+
+    ; 如果用户程序有retf,那么就会在中间显示红色的5
+    mov bh,12
+    mov bl,12
+    mov cx,0x0635
+    call showChar
 
     hlt
 
@@ -175,6 +127,73 @@ calcu_segment:
     popa
     ret
 
+; 根据协议读取用户程序到指定内存上
+; 入口参数
+; ds:0x0000 -- 指定内存
+; di:si -- 指定开始扇区
+read_user_program:
+    pusha
+
+    xor bx,bx
+    call read_disk_1 ; 先读取第一个扇区
+
+; 看后边还用不用继续读用户程序
+    ;计算程序长度,决定还要读入多少扇区(1个扇区512字节)
+    mov ax,[0x00]
+    mov dx,[0x02] ; 程序长度为dx(16~31),ax(0~15)
+    mov bx,512
+    div bx
+    ; 现在dx存余数,ax存商
+    ; 如果dx>0 那么实际总共要读取的扇区数为ax+1
+    ; 如果dx=0 那么实际总共要读取的扇区数为ax
+    ; 所以, if(dx>0) dx=1
+    ; 然后add ax,dx
+    cmp dx,0
+    je add_dx_to_ax
+    mov dx,1 ; 如果dx不为0,那么将它置1
+    add_dx_to_ax:
+        add ax,dx ; 然后加到ax上
+    ; 但是由于我们已经读取过一个扇区
+    sub ax,1 ; 剩余扇区数等于实际总扇区数-1
+
+    mov cx,ax ; 设置循环,注意如果cx=0,那就不用继续读取了
+    ; 如果cx=0,还用loop,就会循环0xffff次
+    jcxz not_continue_read_disk
+    
+    xor bx,bx 
+    continue_read_disk:
+        inc si
+        adc di,0 ; 移动到下一个扇区
+        add bx,512 ; 指向下一段内存
+        call read_disk_1
+        loop continue_read_disk
+    
+    not_continue_read_disk:
+
+    popa
+    ret
+
+; 重定位段表
+; 入口参数
+; ds -- 用户程序段地址,也是程序的开始地址
+relocation_segment_table:
+    pusha
+
+; 计算入口代码段基址
+    mov dx,ds ; calcu_segment的入口参数
+    mov bx,0x06
+    call calcu_segment
+
+; 段重定位表
+    mov cx,[0x0a] ;长度
+    mov bx,0x0c ;段重定位表偏移量
+    realloc:
+        call calcu_segment
+        add bx,4
+        loop realloc
+
+    popa
+    ret 
 
 phy_base_ip dw 0x0
 phy_base_cs dw 0x1000
