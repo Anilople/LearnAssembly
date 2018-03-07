@@ -9,6 +9,7 @@ SECTION header align=16 vstart=0
 
     relocation:; 段重定位表 
     code_segment dd section.code.start ;[12->0x0c]
+    data_segment dd section.data.start ;[16->0x10]
 
     header_end:
 
@@ -24,7 +25,7 @@ start:
 		; add si,2
 		; loop clear
 
-    mov ax,[code_segment] ; 字符地址
+    mov ax,[data_segment] ; 字符地址
     mov ds,ax
     mov si,hello
 
@@ -45,11 +46,15 @@ start:
 
     retf
 
+    code_end:
+
+SECTION data align=16 vstart=0
     hello:
     db "hello,world!"
+    db "It's is a data segment test."
     count equ $-hello
 
-    code_end:
+    data_end:
 
 SECTION trail align=16 ;注意没有vstart,这样标号就会从这个程序的开头开始算
 program_end:
