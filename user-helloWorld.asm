@@ -10,20 +10,18 @@ SECTION header align=16 vstart=0
     relocation:; 段重定位表 
     code_segment dd section.code.start ;[12->0x0c]
     data_segment dd section.data.start ;[16->0x10]
+    stack_segment dd section.stack.start
 
     header_end:
 
 SECTION code align=16 vstart=0
 start:
-	
-	; mov ax,0xB800
-	; mov ds,ax
-	; mov si,0
-	; mov cx,80*25
-	; clear:
-		; mov word [si],0
-		; add si,2
-		; loop clear
+	; push ss
+    ; pusha
+
+    ; mov ax,[stack_segment]
+    ; mov ss,ax
+    ; mov sp,stackEND ; 设置用户自己的堆栈
 
     mov ax,[data_segment] ; 字符地址
     mov ds,ax
@@ -44,17 +42,24 @@ start:
         inc di ;
         loop s
 
+    ; popa
+    ; pop ss
     retf
 
     code_end:
 
 SECTION data align=16 vstart=0
+    times 500 db 0 
     hello:
     db "hello,world!"
     db "It's is a data segment test."
     count equ $-hello
 
     data_end:
+
+SECTION stack align=16 vstart=0 ; 堆栈段
+    times 256 dw 0
+    stackEND:
 
 SECTION trail align=16 ;注意没有vstart,这样标号就会从这个程序的开头开始算
 program_end:

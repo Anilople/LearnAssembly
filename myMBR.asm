@@ -30,6 +30,7 @@ SECTION mbr align=16 vstart=0x7c00
     mov cx,0x0635
     call showChar
 
+    cli
     hlt
 
 ; 读硬盘的子程序,每次只读1个扇区(512字节)
