@@ -61,21 +61,35 @@ hello:
 
     ; 往显存上写hello,world
     mov ebx,0xB8000 ;显存段基址
-    mov byte [ebx],'H'
-    mov byte [ebx+2],'e'
-    mov byte [ebx+4],'l'
-    mov byte [ebx+6],'l'
-    mov byte [ebx+8],'o'
-    mov byte [ebx+10],','
-    mov byte [ebx+12],'w'
-    mov byte [ebx+14],'o'
-    mov byte [ebx+16],'r'
-    mov byte [ebx+18],'l'
-    mov byte [ebx+20],'d'
-    mov byte [ebx+22],'!'
+    mov esi,helloData ; 要显示字符的偏移地址
+    mov ecx,0 ;计数
+    showHello:
+        mov al,byte [esi]
+        mov [ebx+ecx*2],al
+        inc esi
+        inc ecx
+        cmp ecx,wordNumber ; 看显示的字符数量是不是够了
+        jne showHello
+
+    ; mov byte [ebx],'H'
+    ; mov byte [ebx+2],'e'
+    ; mov byte [ebx+4],'l'
+    ; mov byte [ebx+6],'l'
+    ; mov byte [ebx+8],'o'
+    ; mov byte [ebx+10],','
+    ; mov byte [ebx+12],'w'
+    ; mov byte [ebx+14],'o'
+    ; mov byte [ebx+16],'r'
+    ; mov byte [ebx+18],'l'
+    ; mov byte [ebx+20],'d'
+    ; mov byte [ebx+22],'!'
 
 ; 5.hlt
     hlt ; 等中断,由于前边已经关中断,cpu将不会被唤醒
+
+helloData:
+    db 'Hello,world!'
+    wordNumber equ $-helloData
 
 gdt_limit   dw 0 ; 界限
             dd gdt_base_seg ;段基址
