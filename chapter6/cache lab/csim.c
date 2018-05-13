@@ -1,5 +1,6 @@
 #include "cachelab.h"
 #include<unistd.h>
+#include<getopt.h>
 #include<stdio.h>
 #include<stdlib.h>
 /*
@@ -12,15 +13,15 @@ B = 2^b
 */
 
 // get tag from address
-inline unsigned addrGetTag(unsigned addr,unsigned s,unsigned b){
+unsigned addrGetTag(unsigned addr,unsigned s,unsigned b){
     return addr >> (s + b);
 }
 // get index of set from address
-inline unsigned addrGetSet(unsigned addr,unsigned s,unsigned b){
+unsigned addrGetSet(unsigned addr,unsigned s,unsigned b){
     return (addr >> b) & ((1 << s) - 1);
 }
 // get index of block from address
-inline unsigned addrGetBlock(unsigned addr,unsigned s,unsigned b){
+unsigned addrGetBlock(unsigned addr,unsigned s,unsigned b){
     return addr & ((1 << b) - 1);
 }
 
@@ -29,6 +30,8 @@ typedef struct cache_line{
     unsigned tag;
     unsigned lruCounter;
 }cache_line;
+
+enum memoryStatus {miss, hit, eviction, missAndEviction}; // dataType for mark
 
 
 // valid about function
@@ -146,8 +149,6 @@ cache_line* cacheFindMiniumLRU(cache_line** cache,unsigned E,unsigned set)
 }
 
 
-enum memoryStatus {miss, hit, eviction, missAndEviction}; // dataType for mark
-
 // hit or miss
 enum memoryStatus cacheCanHit(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
 {
@@ -158,26 +159,28 @@ enum memoryStatus cacheCanHit(cache_line** cache,unsigned addr,unsigned s, unsig
     return found?hit:miss;
 }
 
-cache_line* load(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+enum memoryStatus load(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
 {
     unsigned tag = addrGetTag(addr,s,b);
     unsigned set = addrGetSet(addr,s,b);
-    unsigned block = addrGetBlock(addr,s,b);
-    printf("tag:0x%x set:0x%x block:0x%x\n",tag,set,block);
-    
-    cache_line* found = cacheCanFind(cache,E,tag,set);
+    // unsigned block = addrGetBlock(addr,s,b);
+    // printf("tag:0x%x set:0x%x block:0x%x\n",tag,set,block);
 
-    if(found)
+    enum memoryStatus loadStatus;
+    
+    if(cacheCanHit(cache,addr,s,E,b) == hit)
     {
         // hit here
-        printf("hit\n");
+        loadStatus = hit;
+        // printf("hit\n");
     }
     else
     {
-        printf("miss ");
+        // printf("miss ");
         cache_line* emptyLine = cacheFindEmptyLine(cache,E,set); // find an empty line to save data for load
         if(emptyLine) // yah, there is an empty line  
         {
+            loadStatus = miss;
             enableValid(emptyLine);
             setTag(emptyLine,tag);
         }
@@ -185,26 +188,28 @@ cache_line* load(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigne
         {
             // we must drop some block
             // use LRU policy
-            printf("eviction");
+            loadStatus = missAndEviction;
+            // printf("eviction");
             cache_line* minimumLRU = cacheFindMiniumLRU(cache,E,set);
             setTag(minimumLRU,tag);
             zeroLRU(minimumLRU); // clear LRU
             incLRU(minimumLRU);
         }
-        printf("\n");
+        // printf("\n");
     }
-    return found;
+    return loadStatus;
 }
 
-void store(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+// just like load, get memory once only
+enum memoryStatus store(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
 {
-   load(cache,addr,s,E,b);
+   return load(cache,addr,s,E,b);
 }
 
-void modify(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+enum memoryStatus modify(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
 {
-    load(cache,addr,s,E,b);
-    store(cache,addr,s,E,b); // actually it can be hit here
+    return load(cache,addr,s,E,b);
+    // whenever the status is, next step for modify is hit!!!
 }
 
 cache_line** cache;
@@ -215,7 +220,17 @@ int main(int argc,char **argv)
         s = 0,
         E = 0,
         b = 0;
-    while(-1 != (opt = getopt(argc,argv,"s:E:b:")))
+
+    FILE* file = NULL;
+    char* fileName = NULL;
+    char identifier;
+    unsigned address;
+    unsigned size;
+
+    int hits = 0;
+    int misses = 0;
+    int evictions = 0;
+    while(-1 != (opt = getopt(argc,argv,"s:E:b:t:")))
     {
         switch(opt)
         {
@@ -228,11 +243,67 @@ int main(int argc,char **argv)
             case 'b':
                 b = atoi(optarg);
                 break;
+            case 't': // file
+                fileName = optarg;
             default:
                 break;
         }
     }
-    
+    // if(!file)
+    // {
+    //     printf("Give the file name!\n");
+    // }
+    // else
+    // {
+    //     printf(optarg);
+    // }
+    if(fileName) // if there is file
+    {
+        cache = getCacheMem(1<<s,E); // get memory
+        initCache(cache,1<<s,E); // initial cache information
+        file = fopen(fileName,"r");
+        enum memoryStatus status = miss; // status mark
+        while(fscanf(file," %c %x,%u",&identifier,&address,&size)>0)
+        {
+            // printf("%c %x,%u\n",identifier,address,size);
+            switch(identifier)
+            {
+                case 'L'://load
+                    status = load(cache,address,s,E,b);
+                    break;
+                case 'S'://store
+                    status = store(cache,address,s,E,b);
+                    break;
+                case 'M':
+                    status = modify(cache,address,s,E,b);
+                    hits++; // !!!!!!!watch out here
+                    break;
+                default:
+                    break;
+            }
+            // now judge status
+            switch(status)
+            {
+                case miss:
+                    misses++;
+                    break;
+                case hit:
+                    hits++;
+                    break;
+                case eviction:
+                    evictions++;
+                    break;
+                case missAndEviction:
+                    misses++;
+                    evictions++;
+                    break;
+                default:
+                    break;
+            }
+        }
+    fclose(file);
+    }
+
     // s = 4;
     // E = 1;
     // b = 4;
@@ -242,26 +313,29 @@ int main(int argc,char **argv)
     // printf("%lu\n",sizeof(cache_line));
     // printf("1 << b : %u\n",1 << b);    
     // printf("(1 << s) * E * sizeof(cache_line)* (1 << b) -- 0x%lx\n",(1 << s) * E * sizeof(cache_line)* (1 << b));
-    cache = getCacheMem(1<<s,E);
 
-    // printf("cache size:0x%lx\n",sizeof(cache));
-    initCache(cache,1<<s,E); // initial cache information
+    // cache = getCacheMem(1<<s,E);
+
+    // // printf("cache size:0x%lx\n",sizeof(cache));
+    // initCache(cache,1<<s,E); // initial cache information
     
-    load(cache,0x10,s,E,b);
-    modify(cache,0x20,s,E,b);
-    load(cache,0x22,s,E,b);
-    store(cache,0x18,s,E,b);
-    load(cache,0x110,s,E,b);
-    load(cache,0x210,s,E,b);
-    modify(cache,0x12,s,E,b);
-    // enum memoryStatus a = hit;
-    // printf("%d\n",a);
-    // unsigned arr[3];
-    // unsigned addr = 0x456210;
-    // prunsignedf("%ld %ld %ld\n",arr[0],arr[1],arr[2]);
-    // prunsignedf("0x%x 0x%x 0x%x\n",addrGet_t(addr,s,b),addrGet_s(addr,s,b),addrGet_b(addr,s,b));
+    // load(cache,0x10,s,E,b);
+    // modify(cache,0x20,s,E,b);
+    // load(cache,0x22,s,E,b);
+    // store(cache,0x18,s,E,b);
+    // load(cache,0x110,s,E,b);
+    // load(cache,0x210,s,E,b);
+    // modify(cache,0x12,s,E,b);
+    // // enum memoryStatus a = hit;
+    // // printf("%d\n",a);
+    // // unsigned arr[3];
+    // // unsigned addr = 0x456210;
+    // // prunsignedf("%ld %ld %ld\n",arr[0],arr[1],arr[2]);
+    // // prunsignedf("0x%x 0x%x 0x%x\n",addrGet_t(addr,s,b),addrGet_s(addr,s,b),addrGet_b(addr,s,b));
     
-    // prunsignedSummary(0, 0, 0);
-    free(cache);
+    // free(cache);
+    printSummary(0, 0, 0);
+    // printf("hits:%u misses:%u evictions:%u\n", hits, misses, evictions);
     return 0;
 }
+
