@@ -38,13 +38,13 @@ void enableValid(cache_line* it){
 void disableValid(cache_line* it){
     it->valid = 0; // 0 mean it is not valid
 }
-unsigned isValid(const cache_line* it){
+unsigned isValid(cache_line* it){
     return it->valid;
 }
-unsigned getTag(const cache_line* it){
+unsigned getTag(cache_line* it){
     return it->tag;
 }
-unsigned getLRU(const cache_line* it){
+unsigned getLRU(cache_line* it){
     return it->lruCounter;
 }
 void setTag(cache_line* it,unsigned tag){
@@ -57,30 +57,53 @@ void incLRU(cache_line* it){
     it->lruCounter++;
 }
 
+// get the memory from system
+cache_line** getCacheMem(unsigned S, unsigned E)
+{
+    cache_line** sets;
+    sets = (cache_line**) malloc(S * sizeof(cache_line*)); // every set's address(about S sets)
+    int i;
+    for(i=0;i<S;i++) // for every set
+    {
+        // give E lines to every set
+        sets[i] = (cache_line*) malloc(E * sizeof(cache_line));
+    }
+    return sets;
+}
+
 void initCache(cache_line** cache, unsigned S,unsigned E)
 {
     unsigned set,e;
-    for(set = 0;set<S;set++)
-        for(e = 0;e<E;e++)
+    // printf("S:%u\nE:%u\n",S,E);
+    // printf("init1\n");
+    for(set = 0;set < S; set++)
+    {
+        for(e = 0;e < E; e++)
         {
+            // printf("set:%u e:%u\n",set,e);
             disableValid(&cache[set][e]);
-            cache[set][e].tag = 0;
-            cache[set][e].lruCounter = 0;
+            // cache[set][e].tag = 0;
+            setTag(&cache[set][e],0);
+            // cache[set][e].lruCounter = 0;
+            zeroLRU(&cache[set][e]);
+            // printf("set:%u e:%u ------------\n",set,e);
         }
+    }
+    // printf("init2\n");    
 }
 
 // find a cache_line
 // compare it is the cache_line we need or not
-// return 0 if not find, else return 1
-unsigned cacheCanFind(const cache_line** cache,unsigned E,unsigned tag, unsigned set)
+// return cache_line's address if find it else return NULL
+cache_line* cacheCanFind(cache_line** cache,unsigned E,unsigned tag, unsigned set)
 {
+    cache_line* found = NULL;
     unsigned e;
-    unsigned found = 0;
     for(e = 0;e < E;e++) // find it in E lines
     {
         if(isValid(&cache[set][e]) && cache[set][e].tag == tag) // valid block and tag is equal
         {
-            found = 1; // yah, find it
+            found = &cache[set][e]; // yah, find it
             break; // break loop
         }
     }
@@ -88,7 +111,7 @@ unsigned cacheCanFind(const cache_line** cache,unsigned E,unsigned tag, unsigned
 }
 
 // find a empty line in cahce[set]
-cache_line* cacheFindEmptyLine(const cache_line** cache,unsigned E,unsigned set)
+cache_line* cacheFindEmptyLine(cache_line** cache,unsigned E,unsigned set)
 {
     cache_line* emptyLine = NULL;
     unsigned e;
@@ -105,7 +128,7 @@ cache_line* cacheFindEmptyLine(const cache_line** cache,unsigned E,unsigned set)
 
 // suppose there are no unvalid line in cache[set]
 // return the lowest lruCounter in cache[set]
-cache_line* cacheFindMiniumLRU(const cache_line** cache,unsigned E,unsigned set)
+cache_line* cacheFindMiniumLRU(cache_line** cache,unsigned E,unsigned set)
 {
     cache_line* minimumLRU = &cache[set][0];
     unsigned lruCurrent = minimumLRU->lruCounter;
@@ -123,27 +146,35 @@ cache_line* cacheFindMiniumLRU(const cache_line** cache,unsigned E,unsigned set)
 }
 
 
-// enum memoryStatus {miss = 0, hit = 1, eviction}; // dataType for mark
-void load(const cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+enum memoryStatus {miss, hit, eviction, missAndEviction}; // dataType for mark
+
+// hit or miss
+enum memoryStatus cacheCanHit(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+{
+    unsigned tag = addrGetTag(addr,s,b);
+    unsigned set = addrGetSet(addr,s,b);
+    // unsigned block = addrGetBlock(addr,s,b);
+    cache_line* found = cacheCanFind(cache,E,tag,set);
+    return found?hit:miss;
+}
+
+cache_line* load(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
 {
     unsigned tag = addrGetTag(addr,s,b);
     unsigned set = addrGetSet(addr,s,b);
     unsigned block = addrGetBlock(addr,s,b);
-    printf("tag:0x%x",tag);
-    printf("set:0x%x",set);
-    printf("block:0x%x",block);
+    printf("tag:0x%x set:0x%x block:0x%x\n",tag,set,block);
     
+    cache_line* found = cacheCanFind(cache,E,tag,set);
 
-    unsigned hit = cacheCanFind(cache,E,tag,set);
-
-    if(hit)
+    if(found)
     {
         // hit here
         printf("hit\n");
     }
     else
     {
-        printf("miss\n");
+        printf("miss ");
         cache_line* emptyLine = cacheFindEmptyLine(cache,E,set); // find an empty line to save data for load
         if(emptyLine) // yah, there is an empty line  
         {
@@ -154,13 +185,15 @@ void load(const cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned
         {
             // we must drop some block
             // use LRU policy
-            printf("eviction\n");
+            printf("eviction");
             cache_line* minimumLRU = cacheFindMiniumLRU(cache,E,set);
             setTag(minimumLRU,tag);
             zeroLRU(minimumLRU); // clear LRU
             incLRU(minimumLRU);
         }
+        printf("\n");
     }
+    return found;
 }
 
 void store(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
@@ -176,7 +209,7 @@ void modify(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
 
 cache_line** cache;
 
-int main(unsigned argc,char **argv)
+int main(int argc,char **argv)
 {
     unsigned opt = 0,
         s = 0,
@@ -199,15 +232,21 @@ int main(unsigned argc,char **argv)
                 break;
         }
     }
-    printf("%d\n",sizeof(cache_line));
-    printf("s:%d\nE:%d\nb:%d\n",s,E,b);
     
-    s = 4;
-    E = 1;
-    b = 4;
-    cache = (cache_line** ) malloc((1 << s) * E * sizeof(cache_line)* (1 << b)); // get the memory
-    printf("cache size:0x%x",sizeof(cache));
+    // s = 4;
+    // E = 1;
+    // b = 4;
+    // printf("s:%d\nE:%d\nb:%d\n",s,E,b);
+    // printf("here1\n");
+    // printf("1 << s : %u\n",1 << s);
+    // printf("%lu\n",sizeof(cache_line));
+    // printf("1 << b : %u\n",1 << b);    
+    // printf("(1 << s) * E * sizeof(cache_line)* (1 << b) -- 0x%lx\n",(1 << s) * E * sizeof(cache_line)* (1 << b));
+    cache = getCacheMem(1<<s,E);
+
+    // printf("cache size:0x%lx\n",sizeof(cache));
     initCache(cache,1<<s,E); // initial cache information
+    
     load(cache,0x10,s,E,b);
     modify(cache,0x20,s,E,b);
     load(cache,0x22,s,E,b);
