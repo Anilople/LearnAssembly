@@ -13,22 +13,22 @@ B = 2^b
 */
 
 // get tag from address
-unsigned addrGetTag(unsigned addr,unsigned s,unsigned b){
+unsigned long addrGetTag(unsigned long addr,unsigned long s,unsigned long b){
     return addr >> (s + b);
 }
 // get index of set from address
-unsigned addrGetSet(unsigned addr,unsigned s,unsigned b){
+unsigned long addrGetSet(unsigned long addr,unsigned long s,unsigned long b){
     return (addr >> b) & ((1 << s) - 1);
 }
 // get index of block from address
-unsigned addrGetBlock(unsigned addr,unsigned s,unsigned b){
+unsigned long addrGetBlock(unsigned long addr,unsigned long s,unsigned long b){
     return addr & ((1 << b) - 1);
 }
 
 typedef struct cache_line{
-    unsigned valid;
-    unsigned tag;
-    unsigned lruCounter;
+    unsigned long valid;
+    unsigned long tag;
+    unsigned long lruCounter;
 }cache_line;
 
 enum memoryStatus {miss, hit, eviction, missAndEviction}; // dataType for mark
@@ -41,17 +41,20 @@ void enableValid(cache_line* it){
 void disableValid(cache_line* it){
     it->valid = 0; // 0 mean it is not valid
 }
-unsigned isValid(cache_line* it){
+unsigned long isValid(cache_line* it){
     return it->valid;
 }
-unsigned getTag(cache_line* it){
+unsigned long getTag(cache_line* it){
     return it->tag;
 }
-unsigned getLRU(cache_line* it){
+unsigned long getLRU(cache_line* it){
     return it->lruCounter;
 }
-void setTag(cache_line* it,unsigned tag){
+void setTag(cache_line* it,unsigned long tag){
     it->tag = tag;
+}
+void setLRU(cache_line* it,unsigned long LRU){
+    it->lruCounter = LRU;
 }
 void zeroLRU(cache_line* it){
     it->lruCounter = 0;
@@ -61,7 +64,7 @@ void incLRU(cache_line* it){
 }
 
 // get the memory from system
-cache_line** getCacheMem(unsigned S, unsigned E)
+cache_line** getCacheMem(unsigned long S, unsigned long E)
 {
     cache_line** sets;
     sets = (cache_line**) malloc(S * sizeof(cache_line*)); // every set's address(about S sets)
@@ -74,22 +77,22 @@ cache_line** getCacheMem(unsigned S, unsigned E)
     return sets;
 }
 
-void initCache(cache_line** cache, unsigned S,unsigned E)
+void initCache(cache_line** cache, unsigned long S,unsigned long E)
 {
-    unsigned set,e;
-    // printf("S:%u\nE:%u\n",S,E);
+    unsigned long set,e;
+    // printf("S:%lu\nE:%lu\n",S,E);
     // printf("init1\n");
     for(set = 0;set < S; set++)
     {
         for(e = 0;e < E; e++)
         {
-            // printf("set:%u e:%u\n",set,e);
+            // printf("set:%lu e:%lu\n",set,e);
             disableValid(&cache[set][e]);
             // cache[set][e].tag = 0;
             setTag(&cache[set][e],0);
             // cache[set][e].lruCounter = 0;
             zeroLRU(&cache[set][e]);
-            // printf("set:%u e:%u ------------\n",set,e);
+            // printf("set:%lu e:%lu ------------\n",set,e);
         }
     }
     // printf("init2\n");    
@@ -98,10 +101,10 @@ void initCache(cache_line** cache, unsigned S,unsigned E)
 // find a cache_line
 // compare it is the cache_line we need or not
 // return cache_line's address if find it else return NULL
-cache_line* cacheCanFind(cache_line** cache,unsigned E,unsigned tag, unsigned set)
+cache_line* cacheFind(cache_line** cache,unsigned long E,unsigned long tag, unsigned long set)
 {
     cache_line* found = NULL;
-    unsigned e;
+    unsigned long e;
     for(e = 0;e < E;e++) // find it in E lines
     {
         if(isValid(&cache[set][e]) && cache[set][e].tag == tag) // valid block and tag is equal
@@ -114,10 +117,10 @@ cache_line* cacheCanFind(cache_line** cache,unsigned E,unsigned tag, unsigned se
 }
 
 // find a empty line in cahce[set]
-cache_line* cacheFindEmptyLine(cache_line** cache,unsigned E,unsigned set)
+cache_line* cacheFindEmptyLine(cache_line** cache,unsigned long E,unsigned long set)
 {
     cache_line* emptyLine = NULL;
-    unsigned e;
+    unsigned long e;
     for(e = 0;e < E;e++) // find it in E lines
     {
         if(!isValid(&cache[set][e])) // not valid mean it has not been used
@@ -131,18 +134,27 @@ cache_line* cacheFindEmptyLine(cache_line** cache,unsigned E,unsigned set)
 
 // suppose there are no unvalid line in cache[set]
 // return the lowest lruCounter in cache[set]
-cache_line* cacheFindMiniumLRU(cache_line** cache,unsigned E,unsigned set)
+cache_line* cacheFindMiniumLRU(cache_line** cache,unsigned long E,unsigned long set)
 {
     cache_line* minimumLRU = &cache[set][0];
-    unsigned lruCurrent = minimumLRU->lruCounter;
-    unsigned e,lrutemp;
+    unsigned long lruCurrent = getLRU(minimumLRU);
+    unsigned long e,lrutemp;
     for(e = 1;e < E;e++) // find it in E lines
     {
         lrutemp = getLRU(&cache[set][e]);
-        if(isValid(&cache[set][e]) && lrutemp < lruCurrent) // occur lower lruCounter
+        if(lrutemp < lruCurrent) // occur lower lruCounter
         {
             minimumLRU = &cache[set][e];
             lruCurrent = lrutemp;
+        }
+    }
+
+    // add test for valid
+    for(e = 0;e < E;e++)
+    {
+        if(!isValid(&cache[set][e])) // if there is not valid
+        {
+            printf("!!!!there is a unvalid line. -- E:%lu set:%lu\n",E,set);
         }
     }
     return minimumLRU;
@@ -150,21 +162,21 @@ cache_line* cacheFindMiniumLRU(cache_line** cache,unsigned E,unsigned set)
 
 
 // hit or miss
-enum memoryStatus cacheCanHit(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+enum memoryStatus cacheCanHit(cache_line** cache,unsigned long addr,unsigned long s, unsigned long E,unsigned long b)
 {
-    unsigned tag = addrGetTag(addr,s,b);
-    unsigned set = addrGetSet(addr,s,b);
-    // unsigned block = addrGetBlock(addr,s,b);
-    cache_line* found = cacheCanFind(cache,E,tag,set);
+    unsigned long tag = addrGetTag(addr,s,b);
+    unsigned long set = addrGetSet(addr,s,b);
+    // unsigned long block = addrGetBlock(addr,s,b);
+    cache_line* found = cacheFind(cache,E,tag,set);
     return found?hit:miss;
 }
 
-enum memoryStatus load(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+enum memoryStatus load(cache_line** cache,unsigned long addr,unsigned long s, unsigned long E,unsigned long b)
 {
-    unsigned tag = addrGetTag(addr,s,b);
-    unsigned set = addrGetSet(addr,s,b);
-    // unsigned block = addrGetBlock(addr,s,b);
-    // printf("tag:0x%x set:0x%x block:0x%x\n",tag,set,block);
+    unsigned long tag = addrGetTag(addr,s,b);
+    unsigned long set = addrGetSet(addr,s,b);
+    // unsigned long block = addrGetBlock(addr,s,b);
+    // printf("tag:0x%lx set:0x%lx block:0x%lx\n",tag,set,block);
 
     enum memoryStatus loadStatus;
     
@@ -172,6 +184,8 @@ enum memoryStatus load(cache_line** cache,unsigned addr,unsigned s, unsigned E,u
     {
         // hit here
         loadStatus = hit;
+        // cache_line* it = cacheFind(cache,E,tag,set);
+        // incLRU(it); // add lruCounter
         // printf("hit\n");
     }
     else
@@ -183,6 +197,8 @@ enum memoryStatus load(cache_line** cache,unsigned addr,unsigned s, unsigned E,u
             loadStatus = miss;
             enableValid(emptyLine);
             setTag(emptyLine,tag);
+            // zeroLRU(emptyLine); // clear LRU
+            // incLRU(emptyLine);
         }
         else // cannot find an empty line
         {
@@ -192,8 +208,8 @@ enum memoryStatus load(cache_line** cache,unsigned addr,unsigned s, unsigned E,u
             // printf("eviction");
             cache_line* minimumLRU = cacheFindMiniumLRU(cache,E,set);
             setTag(minimumLRU,tag);
-            zeroLRU(minimumLRU); // clear LRU
-            incLRU(minimumLRU);
+            // zeroLRU(minimumLRU); // clear LRU
+            // incLRU(minimumLRU);
         }
         // printf("\n");
     }
@@ -201,22 +217,24 @@ enum memoryStatus load(cache_line** cache,unsigned addr,unsigned s, unsigned E,u
 }
 
 // just like load, get memory once only
-enum memoryStatus store(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+enum memoryStatus store(cache_line** cache,unsigned long addr,unsigned long s, unsigned long E,unsigned long b)
 {
-   return load(cache,addr,s,E,b);
+   return load(cache,addr,s,E,b); 
 }
 
-enum memoryStatus modify(cache_line** cache,unsigned addr,unsigned s, unsigned E,unsigned b)
+enum memoryStatus modify(cache_line** cache,unsigned long addr,unsigned long s, unsigned long E,unsigned long b)
 {
-    return load(cache,addr,s,E,b);
+    enum memoryStatus firstStatus = load(cache,addr,s,E,b); // first time
     // whenever the status is, next step for modify is hit!!!
+    load(cache,addr,s,E,b); // load again for increse LRU counter
+    return firstStatus;
 }
 
 cache_line** cache;
 
 int main(int argc,char **argv)
 {
-    unsigned opt = 0,
+    unsigned long opt = 0,
         s = 0,
         E = 0,
         b = 0;
@@ -224,8 +242,8 @@ int main(int argc,char **argv)
     FILE* file = NULL;
     char* fileName = NULL;
     char identifier;
-    unsigned address;
-    unsigned size;
+    unsigned long address;
+    unsigned long size;
 
     int hits = 0;
     int misses = 0;
@@ -267,16 +285,16 @@ int main(int argc,char **argv)
         cache = getCacheMem(1<<s,E); // get memory
         initCache(cache,1<<s,E); // initial cache information
         file = fopen(fileName,"r");
+        unsigned long LRU = 0;
         enum memoryStatus status = miss; // status mark
-        while(fscanf(file," %c %x,%u",&identifier,&address,&size)>0)
+        while(fscanf(file," %c %lx,%lu",&identifier,&address,&size)>0)
         {
+            if(identifier == 'I') // ignore prefix with 'I'
+                continue;
             if(printStatus)
-                printf("%c %x,%u ",identifier,address,size);
+                printf("%c %lx,%lu ",identifier,address,size);
             switch(identifier)
             {
-                case 'I': // ignore with prefix I
-                    continue;
-                    break;
                 case 'L'://load
                     status = load(cache,address,s,E,b);
                     break;
@@ -317,6 +335,8 @@ int main(int argc,char **argv)
                 default:
                     break;
             }
+            setLRU(cacheFind(cache,E,addrGetTag(address,s,b),addrGetSet(address,s,b)),LRU); // add LRU to mark time
+            LRU += 1; // update LRU
             if(printStatus)
             {
                 if(identifier == 'M')
@@ -333,9 +353,9 @@ int main(int argc,char **argv)
     // b = 4;
     // printf("s:%d\nE:%d\nb:%d\n",s,E,b);
     // printf("here1\n");
-    // printf("1 << s : %u\n",1 << s);
+    // printf("1 << s : %lu\n",1 << s);
     // printf("%lu\n",sizeof(cache_line));
-    // printf("1 << b : %u\n",1 << b);    
+    // printf("1 << b : %lu\n",1 << b);    
     // printf("(1 << s) * E * sizeof(cache_line)* (1 << b) -- 0x%lx\n",(1 << s) * E * sizeof(cache_line)* (1 << b));
 
     // cache = getCacheMem(1<<s,E);
@@ -352,14 +372,14 @@ int main(int argc,char **argv)
     // modify(cache,0x12,s,E,b);
     // // enum memoryStatus a = hit;
     // // printf("%d\n",a);
-    // // unsigned arr[3];
-    // // unsigned addr = 0x456210;
+    // // unsigned long arr[3];
+    // // unsigned long addr = 0x456210;
     // // prunsignedf("%ld %ld %ld\n",arr[0],arr[1],arr[2]);
-    // // prunsignedf("0x%x 0x%x 0x%x\n",addrGet_t(addr,s,b),addrGet_s(addr,s,b),addrGet_b(addr,s,b));
+    // // prunsignedf("0x%lx 0x%lx 0x%lx\n",addrGet_t(addr,s,b),addrGet_s(addr,s,b),addrGet_b(addr,s,b));
     
     // free(cache);
     printSummary(hits, misses, evictions);
-    // printf("hits:%u misses:%u evictions:%u\n", hits, misses, evictions);
+    // printf("hits:%lu misses:%lu evictions:%lu\n", hits, misses, evictions);
     return 0;
 }
 
