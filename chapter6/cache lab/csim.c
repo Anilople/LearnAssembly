@@ -274,6 +274,9 @@ int main(int argc,char **argv)
                 printf("%c %x,%u ",identifier,address,size);
             switch(identifier)
             {
+                case 'I': // ignore with prefix I
+                    continue;
+                    break;
                 case 'L'://load
                     status = load(cache,address,s,E,b);
                     break;
