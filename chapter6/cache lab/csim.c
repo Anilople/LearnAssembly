@@ -230,10 +230,15 @@ int main(int argc,char **argv)
     int hits = 0;
     int misses = 0;
     int evictions = 0;
-    while(-1 != (opt = getopt(argc,argv,"s:E:b:t:")))
+
+    int printStatus = 0;
+    while(-1 != (opt = getopt(argc,argv,"vs:E:b:t:")))
     {
         switch(opt)
         {
+            case 'v':
+                printStatus = 1; // print hit, miss or eviction
+                break;
             case 's':
                 s = atoi(optarg);
                 break;
@@ -265,7 +270,8 @@ int main(int argc,char **argv)
         enum memoryStatus status = miss; // status mark
         while(fscanf(file," %c %x,%u",&identifier,&address,&size)>0)
         {
-            // printf("%c %x,%u\n",identifier,address,size);
+            if(printStatus)
+                printf("%c %x,%u ",identifier,address,size);
             switch(identifier)
             {
                 case 'L'://load
@@ -285,23 +291,38 @@ int main(int argc,char **argv)
             switch(status)
             {
                 case miss:
+                    if(printStatus)
+                        printf("miss");
                     misses++;
                     break;
                 case hit:
+                    if(printStatus)
+                        printf("hit");
                     hits++;
                     break;
                 case eviction:
+                    if(printStatus)
+                        printf("eviction");
                     evictions++;
                     break;
                 case missAndEviction:
+                    if(printStatus)
+                        printf("miss eviction");               
                     misses++;
                     evictions++;
                     break;
                 default:
                     break;
             }
+            if(printStatus)
+            {
+                if(identifier == 'M')
+                    printf(" hit\n");
+                else
+                    printf("\n");
+            }
         }
-    fclose(file);
+        fclose(file);
     }
 
     // s = 4;
@@ -334,7 +355,7 @@ int main(int argc,char **argv)
     // // prunsignedf("0x%x 0x%x 0x%x\n",addrGet_t(addr,s,b),addrGet_s(addr,s,b),addrGet_b(addr,s,b));
     
     // free(cache);
-    printSummary(0, 0, 0);
+    printSummary(hits, misses, evictions);
     // printf("hits:%u misses:%u evictions:%u\n", hits, misses, evictions);
     return 0;
 }
