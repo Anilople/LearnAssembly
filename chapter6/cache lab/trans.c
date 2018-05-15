@@ -24,36 +24,27 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
 	int i, j, tmp;
 
-	int A_i_Base, A_j_Base, B_i_Base, B_j_Base;
+	int A_i_Base, A_j_Base;
 	A_i_Base = 0;
-	B_j_Base = 0;
 
 #define stride 8
 	while (A_i_Base < N)
 	{
 		A_j_Base = 0;
-		B_i_Base = 0;
 		while (A_j_Base < M)
 		{
-			//printf("Ai:%d\tAj:%d\tBi:%d\tBj:%d\n",A_i_Base,A_j_Base,B_i_Base,B_j_Base);
-			for (i = 0; i < stride; i++)
+			for (i = 0; i + A_i_Base < N && i + A_i_Base < N && i < stride; i++)
 			{
-				if (i + A_i_Base >= N || i + B_j_Base >= N) break; // about i
-				for (j = 0; j < stride; j++)
+				for (j = 0; j + A_j_Base < M && j + A_j_Base < M && j < stride; j++)
 				{
-					if (j + A_j_Base >= M || j + B_i_Base >= M) break; // about j
 					tmp = A[i + A_i_Base][j + A_j_Base];
-					B[j + B_i_Base][i + B_j_Base] = tmp;
-					//cout << "i + A_i_Base:" << i + A_i_Base << "\t" << "j + A_j_Base:" << j + A_j_Base << endl;
-					//cout << "j + B_i_Base:" << j + B_i_Base << "\t" << "i + B_j_Base:" << i + B_j_Base << endl;
+					B[j + A_j_Base][i + A_i_Base] = tmp;
 				}
 			}
 			// to next matrix block
 			A_j_Base += stride;
-			B_i_Base += stride;
 		}
 		A_i_Base += stride;
-		B_j_Base += stride;
 	}
 }
 
