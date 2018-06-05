@@ -65,12 +65,13 @@ int execve(const char *filename, const char *argv[], const char *envp[]);
 
 如果一个进程有一个类型为**k**的待处理信号，那么任何接下来发送到这个进程的类型为**k**的信号都**不会**排队等待；它们只是被简单地丢弃。
 
-一个进程可以有选择性地**阻塞**接收某种信号。当一种信号被阻塞时，它仍可以被发送，但是产生的待处理信号不会被接收，直到进程取消对这种信号的阻塞。
+一个进程可以有选择性地**阻塞**接收某种信号(比如调用`sigprocmask`来阻塞某种信号)。当一种信号被阻塞时，它仍可以被发送，但是产生的待处理信号不会被接收，直到进程取消对这种信号的阻塞。
 
 一个待处理信号最多只能被接收一次。内核为每个进程在`pending`位向量（也称为信号掩码`signal mask`）中维护着待处理信号的集合，而在`blocked`位向量中维护着被阻塞的信号集合。只要传送了一个类型为`k`的信号，内核就会设置`pending`中的第`k`位，而只要接收了一个类型为`k`的信号，内核就会清除`pending`中的第`k`位。
 
 #### 发送信号
 
+SIGSTOP和SIGKILL不可捕获
 
 1. 进程组（process group）
 
@@ -83,7 +84,7 @@ int execve(const char *filename, const char *argv[], const char *envp[]);
 // 返回当前进程的进程组ID
 pid_t getpgrp(void); 
 // 改变自己或者其他进程的进程组
-// 将进程pid的进程组改为gpid
+// 将进程pid的进程组改为pgid
 // 如果pid是0，那么就使用当前进程的PID
 // 如果pgid是0，那么就用pid指定的进程的pid作为进程组
 int setpgid(pid_t pid,pid_t pgid); 
@@ -133,6 +134,10 @@ unsigned int alarm(unsigned int secs);
 // SIG_UNBLOCK -- 从blocked中删除set中的信号 (blocked &= ~set)
 // SIG_SETMASK -- block = set
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+int sigemptyset(sigset_t *set);
+int sigfillset(sigset_t *set);
+int sigaddset(sigset_t *set, int signum);
+int sigdelset(sigset_t *set, int signum);
 ```
 
 #### 编写信号处理程序
